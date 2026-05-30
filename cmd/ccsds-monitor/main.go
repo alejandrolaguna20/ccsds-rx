@@ -47,7 +47,6 @@ func main() {
 				fmt.Printf("  Payload:   %x\n", p.UserData())
 			}
 		}
-		return
 	}
 	fmt.Println("\n[FAILURE] Analysis complete: No valid CCSDS packets identified in active feeds.")
 }
