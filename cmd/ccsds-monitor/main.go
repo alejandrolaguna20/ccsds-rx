@@ -23,34 +23,31 @@ func main() {
 		ID   string
 		Name string
 	}{
+		{"25544", "ISS (Zarya)"},
 		{"57172", "UmKA-1"},
-		{"39090", "STRAND-1"},
-		{"40014", "BUGSAT-1"},
 	}
 	for _, sat := range satellites {
 		fmt.Printf("\nTargeting satellite %s (NORAD %s)...\n", sat.Name, sat.ID)
-		packets, err := ingest.FetchLiveTelemetry(token, sat.ID, 10)
+		packets, rawFrames, err := ingest.FetchLiveTelemetry(token, sat.ID, 5)
 		if err != nil {
 			fmt.Printf("[WARN] Skipping %s: %v\n", sat.Name, err)
 			continue
 		}
 		if len(packets) == 0 {
-			fmt.Printf("[INFO] No CCSDS packets identified in the latest radio frames for %s.\n", sat.Name)
+			fmt.Printf("[INFO] No CCSDS packets identified for %s. Analyzing radio protocol:\n", sat.Name)
+			for _, frame := range rawFrames {
+				ccsds.DecodeRawFrame(frame)
+			}
 			continue
 		}
-		fmt.Printf("[SUCCESS] Extracted %d packets from %s stream.\n", len(packets), sat.Name)
+		fmt.Printf("[SUCCESS] Extracted %d structured packets from %s stream.\n", len(packets), sat.Name)
 		for i, p := range packets {
-			// TODO: Implement stateful monitoring. Instead of printing discrete packets,
-			// maintain a 'SatelliteState' object and render a real-time TUI dashboard
-
 			fmt.Printf("\n[Packet %d]\n", i)
 			fmt.Printf("  APID:      0x%03X (%d)\n", p.APID(), p.APID())
 			fmt.Printf("  Seq Count: %d\n", p.SequenceCount())
 			fmt.Printf("  Size:      %d bytes\n", p.TotalLength())
-
 			ccsds.DecodeMissionData(sat.ID, p)
 		}
-		return
 	}
-	fmt.Println("\n[FAILURE] Analysis complete: No valid CCSDS packets identified in active feeds.")
+	fmt.Println("\nAnalysis complete.")
 }

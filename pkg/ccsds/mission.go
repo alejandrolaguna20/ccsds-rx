@@ -1,55 +1,65 @@
 package ccsds
 
-import "fmt"
-
-type UmKa1Housekeeping struct {
-	BatteryVoltage int
-	BatteryCurrent int
-	SolarVoltage   int
-	Temperature    int8
-	RSSI           int8
-}
-
-func (u *UmKa1Housekeeping) Decode(data []byte) error {
-	if len(data) < 8 {
-		return fmt.Errorf("USP payload too short")
-	}
-
-	u.BatteryVoltage = int(data[0]) | int(data[1])<<8
-	u.BatteryCurrent = int(int16(data[2]) | int16(data[3])<<8)
-	u.SolarVoltage = int(data[4]) | int(data[5])<<8
-	u.Temperature = int8(data[6])
-	u.RSSI = int8(data[7])
-
-	return nil
-}
-
-func (u *UmKa1Housekeeping) String() string {
-	return fmt.Sprintf("BAT: %dmV | CUR: %dmA | SOL: %dmV | TEMP: %d°C | RSSI: %ddBm",
-		u.BatteryVoltage, u.BatteryCurrent, u.SolarVoltage, u.Temperature, u.RSSI)
-}
+import (
+	"fmt"
+	"unicode"
+)
 
 func DecodeMissionData(noradID string, packet SpacePacket) {
 	switch noradID {
-	case "57172":
-		if packet.APID() == 0x001 {
-			var hk UmKa1Housekeeping
-			if err := hk.Decode(packet.UserData()); err == nil {
-				fmt.Printf("  [UmKA-1 USP HK] %s\n", hk.String())
-			}
-		} else {
-			fmt.Printf("  [UmKA-1] APID 0x%03X payload: %x\n", packet.APID(), packet.UserData())
-		}
-
-	case "39090":
-		// TODO: Implement STRAND-1 specific payload decoding
-		fmt.Printf("  [STRAND-1] APID 0x%03X payload: %x (Parsing pending)\n", packet.APID(), packet.UserData())
-
-	case "40014":
-		// TODO: Implement BUGSAT-1 specific payload decoding
-		fmt.Printf("  [BUGSAT-1] APID 0x%03X payload: %x (Parsing pending)\n", packet.APID(), packet.UserData())
-
+	case "57172": // UmKA-1
+		fmt.Printf("  [UmKA-1] APID 0x%03X payload: %x\n", packet.APID(), packet.UserData())
 	default:
-		fmt.Printf("  [Unknown Satellite] APID: 0x%03X | Payload: %x\n", packet.APID(), packet.UserData())
+		fmt.Printf("  [Generic] APID: 0x%03X | Payload: %x\n", packet.APID(), packet.UserData())
 	}
+}
+
+func DecodeRawFrame(frame []byte) {
+	if isAX25(frame) {
+		dest, src := parseAX25Address(frame)
+		payload := ""
+		if len(frame) > 16 {
+			payload = ExtractPrintableText(frame[16:])
+		}
+		fmt.Printf("  [AX.25 Frame] From: %s | To: %s | Msg: %s\n", src, dest, payload)
+		return
+	}
+	fmt.Printf("  [Unknown Protocol] Size: %d bytes | Hex: %x\n", len(frame), frame)
+}
+
+func isAX25(data []byte) bool {
+	if len(data) < 14 {
+		return false
+	}
+	for i := 0; i < 7; i++ {
+		char := rune(data[i] >> 1)
+		if !unicode.IsPrint(char) && !unicode.IsSpace(char) {
+			return false
+		}
+	}
+	return true
+}
+
+func parseAX25Address(data []byte) (string, string) {
+	dest := ""
+	for i := 0; i < 6; i++ {
+		dest += string(rune(data[i] >> 1))
+	}
+	src := ""
+	for i := 7; i < 13; i++ {
+		src += string(rune(data[i] >> 1))
+	}
+	return dest, src
+}
+
+func ExtractPrintableText(data []byte) string {
+	var result []rune
+	for _, b := range data {
+		if unicode.IsPrint(rune(b)) {
+			result = append(result, rune(b))
+		} else if b == 0x0D || b == 0x0A {
+			result = append(result, ' ')
+		}
+	}
+	return string(result)
 }

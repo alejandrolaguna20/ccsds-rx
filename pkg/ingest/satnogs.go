@@ -21,7 +21,7 @@ type SatNOGSFrame struct {
 	Frame     string `json:"frame"`
 }
 
-func FetchLiveTelemetry(token string, noradID string, limit int) ([]ccsds.SpacePacket, error) {
+func FetchLiveTelemetry(token string, noradID string, limit int) ([]ccsds.SpacePacket, [][]byte, error) {
 	url := fmt.Sprintf("https://db.satnogs.org/api/telemetry/?satellite=%s&limit=%d", noradID, limit)
 
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -31,35 +31,34 @@ func FetchLiveTelemetry(token string, noradID string, limit int) ([]ccsds.SpaceP
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to SatNOGS: %w", err)
+		return nil, nil, fmt.Errorf("failed to connect to SatNOGS: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("satnogs api returned status: %s (check your token)", resp.Status)
+		return nil, nil, fmt.Errorf("satnogs api returned status: %s", resp.Status)
 	}
 
 	var satResp SatNOGSResponse
 	if err := json.NewDecoder(resp.Body).Decode(&satResp); err != nil {
-		return nil, fmt.Errorf("failed to decode json: %w", err)
+		return nil, nil, fmt.Errorf("failed to decode json: %w", err)
 	}
 
 	var packets []ccsds.SpacePacket
+	var rawFrames [][]byte
 	for _, f := range satResp.Results {
 		data, err := hex.DecodeString(f.Frame)
 		if err != nil {
 			continue
 		}
-
-		// TODO: Implement AX.25/FX.25 link-layer header parsing to extract
-		// metadata such as source and destination callsigns.
+		rawFrames = append(rawFrames, data)
 		packet, err := SynchronizePacket(data)
 		if err == nil {
 			packets = append(packets, packet)
 		}
 	}
 
-	return packets, nil
+	return packets, rawFrames, nil
 }
 
 func SynchronizePacket(frame []byte) (ccsds.SpacePacket, error) {
@@ -71,38 +70,25 @@ func SynchronizePacket(frame []byte) (ccsds.SpacePacket, error) {
 			}
 		}
 	}
-	return nil, fmt.Errorf("no valid CCSDS packet found in frame")
+	return nil, fmt.Errorf("no recognizable CCSDS packet found")
 }
 
 func GenerateMockStream(count int) [][]byte {
 	stream := make([][]byte, count)
 	for i := range count {
 		noiseSize := rand.IntN(12) + 8
-		frame := make([]byte, noiseSize+6+10)
+		frame := make([]byte, noiseSize+ccsds.PrimaryHeaderSize+10)
 		crand.Read(frame[:noiseSize])
 
 		apid := uint16(rand.IntN(2048))
 		frame[noiseSize] = 0x08 | uint8(apid>>8)
 		frame[noiseSize+1] = uint8(apid & 0xFF)
-
-		seq := uint16(i % 16384)
-		frame[noiseSize+2] = 0xC0 | uint8(seq>>8)
-		frame[noiseSize+3] = uint8(seq & 0xFF)
-
+		frame[noiseSize+2] = 0xC0
+		frame[noiseSize+3] = uint8(i % 256)
 		frame[noiseSize+4] = 0x00
 		frame[noiseSize+5] = 0x09
 
-		payload := make([]byte, 10)
-		if apid == 0x10 {
-			payload[0] = uint8(180 + rand.IntN(40))
-			payload[1] = uint8(rand.IntN(40) - 10)
-			payload[2], payload[3] = uint8(rand.IntN(256)), uint8(rand.IntN(256))
-			payload[4], payload[5] = uint8(rand.IntN(256)), uint8(rand.IntN(256))
-			payload[6], payload[7] = uint8(rand.IntN(256)), uint8(rand.IntN(256))
-		} else {
-			copy(payload, []byte("TELEMETRY!"))
-		}
-		copy(frame[noiseSize+6:], payload)
+		copy(frame[noiseSize+6:], []byte("TELEMETRY!"))
 
 		stream[i] = frame
 	}
