@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/alejandrolaguna20/ccsds-rx/pkg/ccsds"
 	"github.com/alejandrolaguna20/ccsds-rx/pkg/ingest"
 	"github.com/joho/godotenv"
 )
@@ -39,14 +40,17 @@ func main() {
 		}
 		fmt.Printf("[SUCCESS] Extracted %d packets from %s stream.\n", len(packets), sat.Name)
 		for i, p := range packets {
+			// TODO: Implement stateful monitoring. Instead of printing discrete packets,
+			// maintain a 'SatelliteState' object and render a real-time TUI dashboard
+
 			fmt.Printf("\n[Packet %d]\n", i)
 			fmt.Printf("  APID:      0x%03X (%d)\n", p.APID(), p.APID())
 			fmt.Printf("  Seq Count: %d\n", p.SequenceCount())
 			fmt.Printf("  Size:      %d bytes\n", p.TotalLength())
-			if len(p.UserData()) > 0 {
-				fmt.Printf("  Payload:   %x\n", p.UserData())
-			}
+
+			ccsds.DecodeMissionData(sat.ID, p)
 		}
+		return
 	}
 	fmt.Println("\n[FAILURE] Analysis complete: No valid CCSDS packets identified in active feeds.")
 }

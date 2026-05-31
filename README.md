@@ -1,4 +1,4 @@
-# CCSDS Telemetry Engine (ccsds-rx)
+# `ccsds-rx`: CCSDS Downlink Decoder
 
 A high-performance, zero-copy telemetry engine designed to synchronize and decode CCSDS Space Packet Protocol frames from live satellite observations.
 
@@ -32,11 +32,6 @@ The CCSDS Monitor application targets active satellites (like UmKA-1) and attemp
 ```bash
 go run cmd/ccsds-monitor/main.go
 ```
-## Project Structure
-- `pkg/ccsds`: Core bit-surgical engine (Header parsing and Telemetry decoding).
-- `pkg/ingest`: Synchronization layer and SatNOGS API client.
-- `cmd/ccsds-monitor`: Entry point for live satellite data missions.
-- `docs/`: Formal academic thesis and technical specifications.
 
 ## License
 MIT

@@ -1,10 +1,11 @@
 package ingest
 
 import (
+	crand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"time"
 
@@ -72,14 +73,15 @@ func SynchronizePacket(frame []byte) (ccsds.SpacePacket, error) {
 	}
 	return nil, fmt.Errorf("no valid CCSDS packet found in frame")
 }
+
 func GenerateMockStream(count int) [][]byte {
 	stream := make([][]byte, count)
-	for i := 0; i < count; i++ {
-		noiseSize := rand.Intn(12) + 8
+	for i := range count {
+		noiseSize := rand.IntN(12) + 8
 		frame := make([]byte, noiseSize+6+10)
-		rand.Read(frame[:noiseSize])
+		crand.Read(frame[:noiseSize])
 
-		apid := uint16(rand.Intn(2048))
+		apid := uint16(rand.IntN(2048))
 		frame[noiseSize] = 0x08 | uint8(apid>>8)
 		frame[noiseSize+1] = uint8(apid & 0xFF)
 
@@ -92,11 +94,11 @@ func GenerateMockStream(count int) [][]byte {
 
 		payload := make([]byte, 10)
 		if apid == 0x10 {
-			payload[0] = uint8(180 + rand.Intn(40))
-			payload[1] = uint8(rand.Intn(40) - 10)
-			payload[2], payload[3] = uint8(rand.Intn(256)), uint8(rand.Intn(256))
-			payload[4], payload[5] = uint8(rand.Intn(256)), uint8(rand.Intn(256))
-			payload[6], payload[7] = uint8(rand.Intn(256)), uint8(rand.Intn(256))
+			payload[0] = uint8(180 + rand.IntN(40))
+			payload[1] = uint8(rand.IntN(40) - 10)
+			payload[2], payload[3] = uint8(rand.IntN(256)), uint8(rand.IntN(256))
+			payload[4], payload[5] = uint8(rand.IntN(256)), uint8(rand.IntN(256))
+			payload[6], payload[7] = uint8(rand.IntN(256)), uint8(rand.IntN(256))
 		} else {
 			copy(payload, []byte("TELEMETRY!"))
 		}
