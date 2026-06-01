@@ -7,6 +7,7 @@ import (
 
 	"github.com/alejandrolaguna20/ccsds-rx/pkg/ccsds"
 	"github.com/alejandrolaguna20/ccsds-rx/pkg/ingest"
+	"github.com/alejandrolaguna20/ccsds-rx/pkg/state"
 	"github.com/joho/godotenv"
 )
 
@@ -14,7 +15,7 @@ type Config struct {
 	SatNOGSToken string
 }
 
-func getSatelliteData(satNoradID string, config Config) {
+func getSatelliteData(satNoradID string, config Config, packetChan chan<- ccsds.SpacePacket) {
 	fmt.Printf("\nTargeting satellite (NORAD %s)...\n", satNoradID)
 	packets, rawFrames, err := ingest.FetchLiveTelemetry(config.SatNOGSToken, satNoradID, 5)
 	if err != nil {
@@ -35,6 +36,9 @@ func getSatelliteData(satNoradID string, config Config) {
 		fmt.Printf("  Seq Count: %d\n", p.SequenceCount())
 		fmt.Printf("  Size:      %d bytes\n", p.TotalLength())
 		ccsds.DecodeMissionData(satNoradID, p)
+
+		// Pipe packet to State Tracker
+		packetChan <- p
 	}
 }
 
@@ -51,8 +55,23 @@ func main() {
 	config := Config{
 		SatNOGSToken: token,
 	}
+
+	tracker := state.NewTracker()
+	packetChan := make(chan ccsds.SpacePacket, 100)
+
+	go func() {
+		for p := range packetChan {
+			tracker.Update(p)
+		}
+	}()
+
 	id := flag.String("noradID", "0", "Satellite's NORAD ID")
 	flag.Parse()
-	getSatelliteData(*id, config)
+
+	getSatelliteData(*id, config, packetChan)
+
+	s := tracker.GetState()
+	fmt.Printf("\n[STATE TRACKER] Packets Processed: %d | Last Update: %v\n", s.PacketCount, s.LastUpdate.Format("15:04:05"))
+
 	fmt.Println("\nAnalysis complete.")
 }
