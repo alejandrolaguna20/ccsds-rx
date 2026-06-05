@@ -1,16 +1,11 @@
 package ccsds
 
-// SpacePacket is a zero-allocation view of a raw CCSDS packet buffer.
-// It is a type alias to []byte to allow receiver methods without copying.
 type SpacePacket []byte
 
 const (
-	// PrimaryHeaderSize is the fixed 6-byte CCSDS primary header.
 	PrimaryHeaderSize = 6
 )
 
-// NewSpacePacket creates a SpacePacket from a byte slice.
-// This operation is O(1) and performs ZERO allocations or copies.
 func NewSpacePacket(data []byte) (SpacePacket, error) {
 	if len(data) < PrimaryHeaderSize {
 		return nil, ErrPacketTooShort

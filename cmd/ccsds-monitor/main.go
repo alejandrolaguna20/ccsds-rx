@@ -4,10 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/alejandrolaguna20/ccsds-rx/internal/tui"
 	"github.com/alejandrolaguna20/ccsds-rx/pkg/ccsds"
 	"github.com/alejandrolaguna20/ccsds-rx/pkg/ingest"
 	"github.com/alejandrolaguna20/ccsds-rx/pkg/state"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
 )
 
@@ -16,36 +19,26 @@ type Config struct {
 }
 
 func getSatelliteData(satNoradID string, config Config, packetChan chan<- ccsds.SpacePacket) {
-	fmt.Printf("\nTargeting satellite (NORAD %s)...\n", satNoradID)
-	packets, rawFrames, err := ingest.FetchLiveTelemetry(config.SatNOGSToken, satNoradID, 5)
+	packets, rawFrames, err := ingest.FetchLiveTelemetry(config.SatNOGSToken, satNoradID, 10)
 	if err != nil {
-		fmt.Printf("[WARN] Skipping %s: %v\n", satNoradID, err)
 		return
 	}
 	if len(packets) == 0 {
-		fmt.Printf("[INFO] No CCSDS packets identified for %s. Analyzing radio protocol:\n", satNoradID)
 		for _, frame := range rawFrames {
 			ccsds.DecodeRawFrame(frame)
 		}
 		return
 	}
-	fmt.Printf("[SUCCESS] Extracted %d structured packets from %s stream.\n", len(packets), satNoradID)
-	for i, p := range packets {
-		fmt.Printf("\n[Packet %d]\n", i)
-		fmt.Printf("  APID:      0x%03X (%d)\n", p.APID(), p.APID())
-		fmt.Printf("  Seq Count: %d\n", p.SequenceCount())
-		fmt.Printf("  Size:      %d bytes\n", p.TotalLength())
-		ccsds.DecodeMissionData(satNoradID, p)
-
-		// Pipe packet to State Tracker
+	for _, p := range packets {
 		packetChan <- p
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("[WARN] No .env file found, relying on system environment variables")
+		// Silent if no .env
 	}
 	token := os.Getenv("SATNOGS_TOKEN")
 	if token == "" {
@@ -56,6 +49,9 @@ func main() {
 		SatNOGSToken: token,
 	}
 
+	id := flag.String("noradID", "57172", "Satellite's NORAD ID (default: UmKA-1)")
+	flag.Parse()
+
 	tracker := state.NewTracker()
 	packetChan := make(chan ccsds.SpacePacket, 100)
 
@@ -65,13 +61,12 @@ func main() {
 		}
 	}()
 
-	id := flag.String("noradID", "0", "Satellite's NORAD ID")
-	flag.Parse()
+	go getSatelliteData(*id, config, packetChan)
 
-	getSatelliteData(*id, config, packetChan)
-
-	s := tracker.GetState()
-	fmt.Printf("\n[STATE TRACKER] Packets Processed: %d | Last Update: %v\n", s.PacketCount, s.LastUpdate.Format("15:04:05"))
-
-	fmt.Println("\nAnalysis complete.")
+	m := tui.NewModel(tracker, *id)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error running program: %v", err)
+		os.Exit(1)
+	}
 }
